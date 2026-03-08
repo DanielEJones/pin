@@ -1,0 +1,42 @@
+program ::= expr
+
+expr ::= or
+
+or  ::= and ("or" and)*
+and ::= not ("and" not)*
+not ::= "not"* comp
+
+comp    ::= term (comp-op term)*
+comp-op ::= "<" | ">" | "<=" | ">=" | "!=" | "=="
+
+term    ::= factor (term-op factor)*
+term-op ::= "+" | "-"
+
+factor    ::= unary (factor-op unary)*
+factor-op ::= "*" | "/" | "%"
+
+unary    ::= unary-op* postfix
+unary-op ::= "-"
+
+postfix    ::= primary postfix-op*
+postfix-op ::= "(" call-list ")" | "[" expr "]"
+
+primary ::=
+  | lambda-expr
+  | let-expr
+  | if-expr
+  | "(" expr ")"
+  | boolean
+  | string
+  | number
+  | ident
+  | list
+
+lambda-expr ::= "\" param-list "->" expr
+let-expr    ::= "let" name ["(" param-list ")"] "=" expr ";" expr
+if-expr     ::= "if" expr "then" expr "else" expr
+
+param-list ::= ident ("," ident)*
+call-list  ::= expr ("," expr)*
+
+list ::= "[" expr ("," expr)* "]"
