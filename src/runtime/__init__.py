@@ -1,1 +1,1 @@
-from src.runtime.runtime import run
+from src.runtime.runtime import interpret
