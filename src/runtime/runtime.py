@@ -79,6 +79,17 @@ def run(ast):
             target, index = args
             return do_at(go(target, env), go(index, env))
 
+        elif command == "access":
+            target, field = args
+
+            ty, *data = go(target, env)
+            if ty != "module":
+                print(f"Values of type {ty!r} do not have fields.")
+                return None, None
+
+            fields, = data
+            return fields[field]
+
         elif command == "if":
             cond, then, els = args
 
