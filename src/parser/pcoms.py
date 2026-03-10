@@ -36,19 +36,31 @@ def expect_lexeme(tokens, start, lexeme):
 
 
 def sequence(tokens, start, parsers):
-    def go(items, pos, results):
-        if not items:
-            return pos, results
+    pos = start
 
-        first, *rest = items
-        new_pos, result = run_parser(tokens, pos, first)
+    results = []
+    for parser in parsers:
+        pos, result = run_parser(tokens, pos, parser)
         if result is None:
             return start, None
 
         results.append(result)
-        return go(rest, new_pos, results)
 
-    return go(parsers, start, [])
+    return pos, results
+
+    # def go(items, pos, results):
+    #     if not items:
+    #         return pos, results
+    #
+    #     first, *rest = items
+    #     new_pos, result = run_parser(tokens, pos, first)
+    #     if result is None:
+    #         return start, None
+    #
+    #     results.append(result)
+    #     return go(rest, new_pos, results)
+    #
+    # return go(parsers, start, [])
 
 
 def choice(tokens, start, options):

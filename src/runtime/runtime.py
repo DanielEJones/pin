@@ -1,6 +1,8 @@
 from src.lexer import lex
 from src.parser import parse
 
+from sys import argv
+
 
 def interpret(path):
     with open(path, "r") as f:
@@ -27,8 +29,14 @@ def frontend(source):
     return tree
 
 
+CURRENT_FUNCTION = "main"
+LAST_SEARCH = "_"
+
 def run(ast, path):
+
     def go(node, env):
+        global LAST_SEARCH, CURRENT_FUNCTION
+
         command, *args = node
         if command is None:
             return None, None
@@ -52,9 +60,11 @@ def run(ast, path):
         elif command == "var":
             name, = args
             if name not in env:
-                print(f"No such name {name!r} bound in scope.")
+                print(env.keys())
+                print(f"{CURRENT_FUNCTION}: No such name {name!r} bound in scope.")
                 return None, None
 
+            LAST_SEARCH = name
             var = env[name]
             return var
 
@@ -64,6 +74,7 @@ def run(ast, path):
             closed_env = env.copy()
             closure = ("closure", params, body, closed_env)
 
+            LAST_SEARCH = "a lambda"
             return closure
 
         elif command == "bind-fn":
@@ -80,10 +91,13 @@ def run(ast, path):
             target, args_list = args
 
             typ, *data = go(target, env)
+
             if typ not in {"closure", "builtin"}:
                 if typ is not None:
-                    print(f"Values of type {typ!r} is not callable: {target}.")
+                    print(f"{CURRENT_FUNCTION}: Values of type {typ!r} is not callable: {target}.")
                 return None, None
+
+            CURRENT_FUNCTION = LAST_SEARCH
 
             if typ == "closure":
                 params, body, closed_env = data
@@ -113,7 +127,7 @@ def run(ast, path):
 
             ty, *data = go(target, env)
             if ty != "module":
-                print(f"Values of type {ty!r} do not have fields.")
+                print(f"{CURRENT_FUNCTION}: Values of type {ty!r} do not have fields.")
                 return None, None
 
             fields, = data
@@ -125,7 +139,7 @@ def run(ast, path):
             typ, *data = go(cond, env)
             if typ != "bool":
                 if typ is not None:
-                    print(f"Values of type {typ!r} do not know truth.")
+                    print(f"{CURRENT_FUNCTION}: Values of type {typ!r} do not know truth.")
                 return None, None
 
             cond_value, = data
@@ -135,30 +149,50 @@ def run(ast, path):
             else:
                 return go(els, env)
 
-        elif command in {"and", "or"}:
+        elif command == "and":
             left, right = args
 
             l_typ, *l_data = go(left, env)
             if l_typ != "bool":
                 if l_typ is not None:
-                    print(f"Values of type {l_typ!r} do not know truth.")
+                    print(f"{CURRENT_FUNCTION}: Values of type {l_typ!r} do not know truth.")
                 return None, None
+
+            l_value, = l_data
+            if not l_value:
+                return "bool", False
 
             r_typ, *r_data = go(right, env)
             if r_typ != "bool":
                 if r_typ is not None:
-                    print(f"Values of type {r_typ!r} do not know truth.")
+                    print(f"{CURRENT_FUNCTION}: Values of type {r_typ!r} do not know truth.")
+                return None, None
+
+            r_value, = r_data
+            return "bool", r_value
+
+
+        elif command == "or":
+            left, right = args
+
+            l_typ, *l_data = go(left, env)
+            if l_typ != "bool":
+                if l_typ is not None:
+                    print(f"{CURRENT_FUNCTION}: Values of type {l_typ!r} do not know truth.")
                 return None, None
 
             l_value, = l_data
+            if l_value:
+                return "bool", True
+
+            r_typ, *r_data = go(right, env)
+            if r_typ != "bool":
+                if r_typ is not None:
+                    print(f"{CURRENT_FUNCTION}: Values of type {r_typ!r} do not know truth.")
+                    return None, None
+
             r_value, = r_data
-
-            handler = {
-                "and": lambda a, b: a and b,
-                "or": lambda a, b: a or b,
-            }[command]
-
-            return "bool", handler(l_value, r_value)
+            return "bool", r_value
 
         elif command == "not":
             target, = args
@@ -166,7 +200,7 @@ def run(ast, path):
             typ, *data = go(target, env)
             if typ != "bool":
                 if typ is not None:
-                    print(f"Values of type {typ!r} do not know truth.")
+                    print(f"{CURRENT_FUNCTION}: Values of type {typ!r} do not know truth.")
                 return None, None
 
             value, = data
@@ -178,13 +212,13 @@ def run(ast, path):
             l_typ, *l_data = go(left, env)
             if l_typ != "int":
                 if l_typ is not None:
-                    print(f"Values of type {l_typ!r} are incomparable.")
+                    print(f"{CURRENT_FUNCTION}: Values of type {l_typ!r} are incomparable.")
                 return None, None
 
             r_typ, *r_data = go(right, env)
             if r_typ != "int":
                 if r_typ is not None:
-                    print(f"Values of type {r_typ!r} are incomparable.")
+                    print(f"{CURRENT_FUNCTION}: Values of type {r_typ!r} are incomparable.")
                 return None, None
 
             l_value, = l_data
@@ -219,13 +253,13 @@ def run(ast, path):
             l_typ, *l_data = go(left, env)
             if l_typ != "int":
                 if l_typ is not None:
-                    print(f"Values of type {l_typ} do not support arithmetic.")
+                    print(f"{CURRENT_FUNCTION}: Values of type {l_typ} do not support arithmetic.")
                 return None, None
 
             r_typ, *r_data = go(right, env)
             if r_typ != "int":
                 if r_typ is not None:
-                    print(f"Values of type {r_typ} do not support arithmetic.")
+                    print(f"{CURRENT_FUNCTION}: Values of type {r_typ} do not support arithmetic.")
                 return None, None
 
             l_value, = l_data
@@ -247,7 +281,7 @@ def run(ast, path):
             typ, *data = go(target, env)
             if typ != "int":
                 if typ is not None:
-                    print(f"Values of type {typ} do not support arithmetic.")
+                    print(f"{CURRENT_FUNCTION}: Values of type {typ} do not support arithmetic.")
                 return None, None
 
             value, = data
@@ -308,6 +342,8 @@ def run(ast, path):
 
         "import": ("builtin", lambda *args: do_import(*args, path)),
         "export": ("builtin", do_export),
+
+        "args": ("list", argv[2:]),
     })
 
 

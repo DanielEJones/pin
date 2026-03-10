@@ -112,7 +112,7 @@ def is_incomplete_string(s):
         return False
 
     if s.endswith("\""):
-        return len(s) < 2 or s.endswith("\\\"")
+        return len(s) < 2 or s.endswith("\\\"") and not s.endswith("\\\\\"")
 
     return True
 
