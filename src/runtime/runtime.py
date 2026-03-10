@@ -60,7 +60,6 @@ def run(ast, path):
         elif command == "var":
             name, = args
             if name not in env:
-                print(env.keys())
                 print(f"{CURRENT_FUNCTION}: No such name {name!r} bound in scope.")
                 return None, None
 
@@ -334,6 +333,8 @@ def run(ast, path):
         "append": ("builtin", do_append),
         "head": ("builtin", do_head),
         "tail": ("builtin", do_tail),
+        "body": ("builtin", do_body),
+        "last": ("builtin", do_last),
         "len": ("builtin", do_len),
         "at": ("builtin", do_at),
 
@@ -357,7 +358,9 @@ def do_concat(*args):
     r_ty, *r_data = right
 
     if not (l_ty == r_ty) and l_ty in {"str", "list"}:
-        print(f"Could not call 'concat' with types {l_ty!r} and {r_ty!r}.")
+        print(f"{CURRENT_FUNCTION}: Could not call 'concat' with types {l_ty!r} and {r_ty!r}.")
+        print(l_data[0])
+        print(r_data[0])
         return None, None
 
     l_value, = l_data
@@ -413,6 +416,36 @@ def do_tail(*args):
 
     value, = data
     return ty, value[1:]
+
+
+def do_body(*args):
+    if len(args) != 1:
+        print(f"Function 'body' only expects one argument, but {len(args)} were provided.")
+        return None, None
+
+    (ty, *data), = args
+
+    if not ty in {"str", "list"}:
+        print(f"Could not call 'body' with type {ty!r}.")
+        return None, None
+
+    value, = data
+    return ty, value[:-1]
+
+
+def do_last(*args):
+    if len(args) != 1:
+        print(f"Function 'last' only expects one argument, but {len(args)} were provided.")
+        return None, None
+
+    (ty, *data), = args
+
+    if not ty in {"str", "list"}:
+        print(f"Could not call 'last' with type {ty!r}.")
+        return None, None
+
+    value, = data
+    return ty, value[-1]
 
 
 def do_len(*args):

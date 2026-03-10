@@ -1,0 +1,98 @@
+let map(f, list) =
+  let go(items, result) = if len(items) > 0
+    then go(tail(items), append(result, f(items[0])))
+    else result;
+  go(list, []);
+
+
+let reduce(f, init, a) =
+  let go(items, result) = if len(items) > 0
+    then go(tail(items), f(result, items[0]))
+    else result;
+  go(a, init);
+
+
+let filter(f, list) =
+  let go(items, result) =
+    if len(items) == 0 then result
+    else if f(items[0]) then go(tail(items), append(result, items[0]))
+    else go(tail(items), result);
+  go(list, []);
+
+
+let partition(f, list) =
+  let go(items, current, result) =
+    if len(items) == 0 and len(current) > 0 then
+      let new_result = append(result, current);
+      new_result
+
+    else if len(items) == 0 then
+      result
+
+    else
+      let first = head(items);
+      let rest = tail(items);
+
+      if f(first) and len(current) > 0 then
+        let new_result = concat(result, [current, [first]]);
+        go(rest, [], new_result)
+
+      else if f(first) then
+        let new_result = append(result, [first]);
+        go(rest, [], new_result)
+
+      else
+        let new_current = append(current, first);
+        go(rest, new_current, result);
+
+  go(list, [], []);
+
+
+let discard_between(start, stop, list) =
+  let keep(items, result) =
+    if len(items) == 0 then result
+    else
+      let first = head(items);
+      let rest  = tail(items);
+
+      if first == start then
+        drop(rest, result)
+
+      else
+        let new_result = append(result, first);
+        keep(rest, new_result);
+
+  let drop(items, result) =
+    if len(items) == 0 then result
+    else
+      let first = head(items);
+      let rest  = tail(items);
+
+      if first == stop then
+        keep(rest, result)
+
+      else
+        drop(rest, result);
+
+  keep(list, []);
+
+
+let join(empty, items) = reduce(concat, empty, items);
+
+
+let all(f, x) =
+  let temp = map(f, x);
+  reduce(\b1, b2 -> b1 and b2, true, temp);
+
+
+
+
+export(
+  ["map",             map],
+  ["reduce",          reduce],
+  ["filter",          filter],
+  ["partition",       partition],
+  ["discard_between", discard_between],
+  ["join",            join],
+  ["all",             all]
+)

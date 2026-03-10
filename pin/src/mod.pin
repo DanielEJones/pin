@@ -1,0 +1,10 @@
+let lexer = import("/lexer/lexer.pin");
+
+
+let interpret(path) =
+  let source = read_file(path);
+  lexer.lex(source);
+
+export(
+  ["interpret", interpret]
+)

@@ -1,0 +1,12 @@
+let lang = import("src/mod.pin");
+
+
+let main =
+  if len(args) < 1 then
+    "Expected a file path to interpret"
+  else
+    let file_path = args[0];
+    lang.interpret(file_path);
+
+
+main

@@ -14,6 +14,7 @@ def lex(source):
 
     errors = keep_if(is_error, tokens)
     if len(errors) > 0:
+        print(tokens)
         to_each(print_error, errors)
         return None
 
@@ -111,10 +112,18 @@ def is_incomplete_string(s):
     if not s.startswith("\""):
         return False
 
-    if s.endswith("\""):
-        return len(s) < 2 or s.endswith("\\\"") and not s.endswith("\\\\\"")
+    if s.endswith("\"") and len(s) > 1:
+        pos = len(s) - 2
+        count = 0
 
-    return True
+        while pos >= 0 and s[pos] == "\\":
+            count += 1
+            pos -= 1
+
+        return not (count % 2 == 0)
+
+
+    return s.startswith("\"")
 
 
 def construct_token(lexeme):

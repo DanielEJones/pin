@@ -1,0 +1,126 @@
+let tools  = import("tools.pin");
+let string = import("string.pin");
+
+
+let lex(source) =
+  let lines = string.read_all_lines(source);
+  let lexed_lines = tools.map(do_lex, lines);
+  tools.join([], lexed_lines);
+
+
+let do_lex(source) =
+  let chunked_words = tools.partition(is_separator, string.as_list(source));
+  let merged_words  = tools.reduce(merge_longer_ops, [], chunked_words);
+  let string_words  = tools.map(\xs -> tools.join("", xs), merged_words);
+
+  let merged_strings   = tools.reduce(merge_strings, [], string_words);
+  let without_comments = tools.discard_between("//", "\n", merged_strings);
+
+  let lexemes = tools.filter(\s -> not is_space(s), without_comments);
+  let tokens  = tools.map(make_token, lexemes);
+
+  let errors = tools.filter(\token -> token[0] == "error", tokens);
+  if len(errors) > 0
+    then errors
+    else tokens;
+
+
+let is_separator(ch) = is_symbol(ch) or is_space(ch);
+let is_symbol(s) = tools.all(is_symbol_ch, string.as_list(s));
+let is_space(s)  = tools.all(is_space_ch, string.as_list(s));
+let is_number(s) = tools.all(is_number_ch, string.as_list(s));
+let is_ident(s)  = tools.all(is_letter_ch, string.as_list(s));
+
+
+let is_symbol_ch(ch) =
+  ch == "=" or ch == "!" or ch == "<" or ch == ">" or ch == "+" or ch == "-" or ch == "*" or ch == "/" or ch == "%"
+  or ch == "(" or ch == ")" or ch == ";" or ch == "\\" or ch == "," or ch == "\"" or ch == "[" or ch == "]" or ch == ".";
+
+
+let is_space_ch(ch) =
+  ch == " " or ch == "\t" or ch == "\n";
+
+
+let is_number_ch(ch) =
+  ch == "0" or ch == "1" or ch == "2" or ch == "3" or ch == "4" or ch == "5" or ch == "6" or ch == "7" or ch == "8"
+  or ch == "9";
+
+
+let is_letter_ch(ch) =
+  ch == "a" or ch == "b" or ch == "c" or ch == "d" or ch == "e" or ch == "f" or ch == "g" or ch == "h" or ch == "i"
+  or ch == "j" or ch == "k" or ch == "l" or ch == "m" or ch == "n" or ch == "o" or ch == "p" or ch == "q" or ch == "r"
+  or ch == "s" or ch == "t" or ch == "u" or ch == "v" or ch == "w" or ch == "x" or ch == "y" or ch == "z" or ch == "_";
+
+
+let is_keyword(s) =
+  s == "let" or s == "if" or s == "then" or s == "else" or s == "and" or s == "or" or s == "not" or s == "true"
+  or s == "false";
+
+
+
+
+let merge_longer_ops(elements, current) =
+  if len(elements) == 0 then
+    let result = append(elements, current);
+    result
+
+  else
+    let rest = body(elements);
+    let top  = elements[-1];
+    if top == ["<"] and current == ["="] then
+      append(rest, ["<", "="])
+
+    else if top == [">"] and current == ["="] then
+      append(rest, [">", "="])
+
+    else if top == ["="] and current == ["="] then
+      append(rest, ["=", "="])
+
+    else if top == ["!"] and current == ["="] then
+      append(rest, ["!", "="])
+
+    else if top == ["-"] and current == [">"] then
+      append(rest, ["-", ">"])
+
+    else if top == ["/"] and current == ["/"] then
+      append(rest, ["/", "/"])
+
+    else
+      concat(rest, [top, current]);
+
+
+let merge_strings(elements, current) =
+  if len(elements) == 0 then
+    append(elements, current)
+
+  else
+    let rest = body(elements);
+    let top  = elements[-1];
+
+    if is_incomplete_string(top)
+      then append(rest, concat(top, current))
+      else concat(rest, [top, current]);
+
+
+let is_incomplete_string(s) =
+  if not string.starts_with(s, "\"") then false
+
+  else if string.ends_with(s, "\"") and len(s) > 1 then
+    let escape_count = string.count_end_chars(s, len(s) - 2, "\\");
+    not (escape_count % 2 == 0)
+
+  else string.starts_with(s, "\"");
+
+
+let make_token(s) =
+  if is_number(s) then ["number", s]
+  else if string.starts_with(s, "\"") then ["string", s]
+  else if is_symbol(s) then ["symbol", s]
+  else if is_keyword(s) then ["keyword", s]
+  else if is_ident(s) then ["ident", s]
+  else ["error", s];
+
+
+export(
+  ["lex", lex]
+)
