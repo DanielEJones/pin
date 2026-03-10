@@ -1,1 +1,1 @@
-from lexer.lexer import lex
+from src.lexer.lexer import lex

@@ -1,4 +1,4 @@
-from parser.pcoms import (
+from src.parser.pcoms import (
     sequence, choice, tagged, replace, optional,
     surrounded_by, separated_by, is_exhausted,
     expect_kind, expect_lexeme, run_parser,
@@ -71,6 +71,7 @@ def parse_postfix(tokens, start):
     return parse_postfix_op(tokens, start, (parse_primary, ), [
         (tagged, (parse_call, ), "call"),
         (tagged, (parse_index, ), "index"),
+        (tagged, (parse_access, ), "access"),
     ])
 
 
@@ -81,6 +82,15 @@ def parse_call(tokens, start):
 def parse_index(tokens, start):
     return surrounded_by(tokens, start, (expect_lexeme, "["), (parse_expression, ), (expect_lexeme, "]"))
 
+
+def parse_access(tokens, start):
+    parser = (sequence, [(expect_lexeme, "."), (expect_kind, "ident")])
+    pos, result = run_parser(tokens, start, parser)
+    if result is None:
+        return start, None
+
+    [_, result] = result
+    return pos, result
 
 def parse_arg_list(tokens, start):
     return separated_by(tokens, start, (expect_lexeme, ","), (parse_expression, ))

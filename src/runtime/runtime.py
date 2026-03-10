@@ -1,4 +1,33 @@
-def run(ast):
+from src.lexer import lex
+from src.parser import parse
+
+
+def interpret(path):
+    with open(path, "r") as f:
+        source = f.read()
+
+    ast = frontend(source)
+    if ast is None:
+        print("Failed to parse source")
+        return None
+
+    result = run(ast, path)
+    return result
+
+
+def frontend(source):
+    tokens = lex(source)
+    if tokens is None:
+        return None
+
+    tree = parse(tokens)
+    if tree is None:
+        return None
+
+    return tree
+
+
+def run(ast, path):
     def go(node, env):
         command, *args = node
         if command is None:
@@ -78,6 +107,17 @@ def run(ast):
         elif command == "index":
             target, index = args
             return do_at(go(target, env), go(index, env))
+
+        elif command == "access":
+            target, field = args
+
+            ty, *data = go(target, env)
+            if ty != "module":
+                print(f"Values of type {ty!r} do not have fields.")
+                return None, None
+
+            fields, = data
+            return fields[field]
 
         elif command == "if":
             cond, then, els = args
@@ -265,6 +305,9 @@ def run(ast):
 
         "read_file": ("builtin", do_read_file),
         "write_file": ("builtin", do_write_file),
+
+        "import": ("builtin", lambda *args: do_import(*args, path)),
+        "export": ("builtin", do_export),
     })
 
 
@@ -407,6 +450,43 @@ def do_write_file(*args):
     return "nil",
 
 
+def do_import(*args):
+    if len(args) != 2:
+        print(f"Function 'import' only expects one argument, but {len(args) - 1} were provided.")
+        return None, None
+
+    (ty, *data), base_path = args
+    if ty != "str":
+        print(f"Could not call 'import' with type {ty!r}")
+        return None, None
+
+    path, = data
+
+    actual_path = relative_to(path, base_path)
+    result = interpret(actual_path)
+
+    return result
+
+
+def do_export(*args):
+    module = {}
+
+    for (ty, *data) in args:
+        if not (ty == "list" and len(data := data[0]) == 2):
+            print("Export must be called on [key, value] pairs.")
+            return None, None
+
+        [(key_ty, *key_data), value] = data
+        if not (key_ty == "str"):
+            print(f"Expected export key to be a string.")
+            return None, None
+
+        name, = key_data
+        module[name] = value
+
+    return "module", module
+
+
 def annotate_with_type(v):
     if isinstance(v, tuple):
         return v
@@ -460,3 +540,9 @@ def normalise_string(s):
             result.append(ch)
 
     return "str", "".join(result)
+
+
+def relative_to(path, base_path):
+    parts = base_path.split("/")
+    parent_dir = "/".join(parts[:-1])
+    return "/".join([parent_dir, path])

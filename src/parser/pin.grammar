@@ -19,7 +19,10 @@ unary    ::= unary-op* postfix
 unary-op ::= "-"
 
 postfix    ::= primary postfix-op*
-postfix-op ::= "(" call-list ")" | "[" expr "]"
+postfix-op ::=
+  | "(" call-list ")"
+  | "[" expr "]"
+  | "." ident
 
 primary ::=
   | lambda-expr

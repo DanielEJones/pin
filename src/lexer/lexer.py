@@ -1,4 +1,4 @@
-from lexer.tools import partition, to_each, keep_if, reduce, discard_between
+from src.lexer.tools import partition, to_each, keep_if, reduce, discard_between
 
 
 def lex(source):
@@ -39,7 +39,7 @@ def is_symbol(s):
         "+", "-", "*", "/", "%",
         "(", ")", ";",
         "\\", ",", "\"",
-        "[", "]"
+        "[", "]", "."
     } for ch in s)
 
 
