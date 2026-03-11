@@ -35,19 +35,19 @@ let do_lex(source, line_no) =
   let should_split = tools.map(\e -> is_separator(e[1]), with_loc);
 
   // zip[list[(loc, char)], list[bool]]
-  let grouped = split_when(\e -> e[1], zip(with_loc, should_split));
+  let grouped = tools.split_when(\e -> e[1], tools.zip(with_loc, should_split));
 
   // list[list[(loc, char)]]
   let clean_groups = tools.map(\g -> tools.map(\e -> e[0], g), grouped);
 
   // list[list[(loc, char)]]
-  let merged_groups = tools.reduce(foo, [], clean_groups);
+  let merged_groups = tools.reduce(join_long_symbols, [], clean_groups);
 
   // list[(loc, lexeme)]
   let lexemes = tools.map(make_lexeme, merged_groups);
 
   // list[(loc, lexeme)]
-  let merged_strings = tools.reduce(bar, [], lexemes);
+  let merged_strings = tools.reduce(join_strings, [], lexemes);
 
   // list[(loc, lexeme)]
   let no_comments = tools.discard_between(\tok -> tok[1] == "//", \tok -> tok[1] == "\n", merged_strings);
@@ -67,10 +67,7 @@ let do_lex(source, line_no) =
     else [true,  tokens];
 
 
-let foo(
-  current_list_of_groups, // : list[list[(loc, char)]]
-  group_to_check          // : list[(loc, char)]
-) =
+let join_long_symbols( current_list_of_groups, group_to_check) =
   if len(current_list_of_groups) == 0 then
     append(current_list_of_groups, group_to_check)
 
@@ -103,18 +100,13 @@ let foo(
        else append(current_list_of_groups, group_to_check);
 
 
- let make_lexeme(
-   group // : list[(loc, char)]
- ) =
+ let make_lexeme(group) =
    let start_position = group[0][0];
    let chars = tools.map(\e -> e[1], group);
    [start_position, tools.join("", chars)];
 
 
-let bar(
-  current_list_of_tokens, // : list[(loc, lexeme)]
-  token_to_check          // : (loc, lexeme)
-) =
+let join_strings(current_list_of_tokens, token_to_check) =
   if len(current_list_of_tokens) == 0 then
     append(current_list_of_tokens, token_to_check)
 
@@ -131,44 +123,15 @@ let bar(
       else append(current_list_of_tokens, token_to_check);
 
 
-let split_when(f, xs) =
-  let go(items, current, result) =
-    if len(items) > 0 then
-      let first = items[0];
-
-      if f(first) and len(current) > 0 then
-        let new_result = concat(result, [current, [first]]);
-        go(tail(items), [], new_result)
-
-      else if f(first) then
-        let new_result = append(result, [first]);
-        go(tail(items), [], new_result)
-
-      else
-        let new_current = append(current, first);
-        go(tail(items), new_current, result)
-
-    else if len(current) > 0 then
-      append(result, current)
-
-    else
-      result;
-
-  go(xs, [], []);
-
-
-let zip(xs, ys) =
-  let go(ix, iy, result) = if len(ix) > 0 and len(iy) > 0
-    then go(tail(ix), tail(iy), append(result, [ix[0], iy[0]]))
-    else result;
-  go(xs, ys, []);
-
 
 let is_separator(ch) = is_symbol(ch) or is_space(ch);
 let is_symbol(s) = tools.all(is_symbol_ch, string.as_list(s));
 let is_space(s)  = tools.all(is_space_ch, string.as_list(s));
 let is_number(s) = tools.all(is_number_ch, string.as_list(s));
-let is_ident(s)  = tools.all(is_letter_ch, string.as_list(s));
+let is_ident(s)  = tools.all(
+  \ch -> is_letter_ch(ch) or is_number_ch(ch),
+  string.as_list(s)
+);
 
 
 let is_symbol_ch(ch) =
@@ -194,49 +157,6 @@ let is_letter_ch(ch) =
 let is_keyword(s) =
   s == "let" or s == "if" or s == "then" or s == "else" or s == "and" or s == "or" or s == "not" or s == "true"
   or s == "false";
-
-
-let merge_longer_ops(elements, current) =
-  if len(elements) == 0 then
-    let result = append(elements, current);
-    result
-
-  else
-    let rest = body(elements);
-    let top  = elements[-1];
-    if top[1] == ["<"] and current[1] == ["="] then
-      append(rest, [top[0], ["<", "="]])
-
-    else if top[1] == [">"] and current[1] == ["="] then
-      append(rest, [top[0], [">", "="]])
-
-    else if top[1] == ["="] and current[1] == ["="] then
-      append(rest, [top[0], ["=", "="]])
-
-    else if top[1] == ["!"] and current[1] == ["="] then
-      append(rest, [top[0], ["!", "="]])
-
-    else if top[1] == ["-"] and current[1] == [">"] then
-      append(rest, [top[0], ["-", ">"]])
-
-    else if top[1] == ["/"] and current[1] == ["/"] then
-      append(rest, [top[0], ["/", "/"]])
-
-    else
-      concat(rest, [top, current]);
-
-
-let merge_strings(elements, current) =
-  if len(elements) == 0 then
-    append(elements, current)
-
-  else
-    let rest = body(elements);
-    let top  = elements[-1];
-
-    if is_incomplete_string(top)
-      then append(rest, concat(top, current))
-      else concat(rest, [top, current]);
 
 
 let is_incomplete_string(s) =

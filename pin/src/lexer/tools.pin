@@ -20,32 +20,31 @@ let filter(f, list) =
   go(list, []);
 
 
-let partition(f, list) =
+let split_when(f, xs) =
   let go(items, current, result) =
-    if len(items) == 0 and len(current) > 0 then
-      let new_result = append(result, current);
-      new_result
-
-    else if len(items) == 0 then
-      result
-
-    else
-      let first = head(items);
-      let rest = tail(items);
+    if len(items) > 0 then
+      let first = items[0];
 
       if f(first) and len(current) > 0 then
         let new_result = concat(result, [current, [first]]);
-        go(rest, [], new_result)
+        go(tail(items), [], new_result)
 
       else if f(first) then
         let new_result = append(result, [first]);
-        go(rest, [], new_result)
+        go(tail(items), [], new_result)
 
       else
         let new_current = append(current, first);
-        go(rest, new_current, result);
+        go(tail(items), new_current, result)
 
-  go(list, [], []);
+    else if len(current) > 0 then
+      append(result, current)
+
+    else
+      result;
+
+  go(xs, [], []);
+
 
 
 let discard_between(start, stop, list) =
@@ -90,6 +89,13 @@ let any(f, x) =
   reduce(\b1, b2 -> b1 or b2, false, temp);
 
 
+let zip(xs, ys) =
+  let go(ix, iy, result) = if len(ix) > 0 and len(iy) > 0
+    then go(tail(ix), tail(iy), append(result, [ix[0], iy[0]]))
+    else result;
+  go(xs, ys, []);
+
+
 let enumerate(xs) =
   let go(items, i, result) = if len(items) > 0
     then go(tail(items), i+1, append(result, [i, items[0]]))
@@ -101,10 +107,11 @@ export(
   ["map",             map],
   ["reduce",          reduce],
   ["filter",          filter],
-  ["partition",       partition],
+  ["split_when",      split_when],
   ["discard_between", discard_between],
   ["join",            join],
   ["all",             all],
   ["any",             any],
+  ["zip",             zip],
   ["enumerate",       enumerate]
 )
