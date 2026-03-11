@@ -1,12 +1,14 @@
+// import the module containing the interpreter
 let lang = import("src/mod.pin");
 
 
 let main =
-  if len(args) < 1 then
+  if len(args) <= 0 then
     "Expected a file path to interpret"
   else
     let file_path = args[0];
     lang.interpret(file_path);
 
 
+// return the value of the program //
 main

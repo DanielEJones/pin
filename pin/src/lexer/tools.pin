@@ -55,7 +55,7 @@ let discard_between(start, stop, list) =
       let first = head(items);
       let rest  = tail(items);
 
-      if first == start then
+      if start(first) then
         drop(rest, result)
 
       else
@@ -68,7 +68,7 @@ let discard_between(start, stop, list) =
       let first = head(items);
       let rest  = tail(items);
 
-      if first == stop then
+      if stop(first) then
         keep(rest, result)
 
       else
@@ -85,6 +85,16 @@ let all(f, x) =
   reduce(\b1, b2 -> b1 and b2, true, temp);
 
 
+let any(f, x) =
+  let temp = map(f, x);
+  reduce(\b1, b2 -> b1 or b2, false, temp);
+
+
+let enumerate(xs) =
+  let go(items, i, result) = if len(items) > 0
+    then go(tail(items), i+1, append(result, [i, items[0]]))
+    else result;
+  go(xs, 0, []);
 
 
 export(
@@ -94,5 +104,7 @@ export(
   ["partition",       partition],
   ["discard_between", discard_between],
   ["join",            join],
-  ["all",             all]
+  ["all",             all],
+  ["any",             any],
+  ["enumerate",       enumerate]
 )

@@ -359,8 +359,8 @@ def do_concat(*args):
 
     if not (l_ty == r_ty) and l_ty in {"str", "list"}:
         print(f"{CURRENT_FUNCTION}: Could not call 'concat' with types {l_ty!r} and {r_ty!r}.")
-        print(l_data[0])
-        print(r_data[0])
+        print(l_data)
+        print(r_data)
         return None, None
 
     l_value, = l_data
@@ -480,6 +480,10 @@ def do_at(*args):
 
     index, = index_data
     l, = l_data
+
+    if index >= len(l):
+        print(l)
+        print(index)
     return annotate_with_type(l[index])
 
 

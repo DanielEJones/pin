@@ -3,26 +3,165 @@ let string = import("string.pin");
 
 
 let lex(source) =
+  // lex each line individually
   let lines = string.read_all_lines(source);
-  let lexed_lines = tools.map(do_lex, lines);
-  tools.join([], lexed_lines);
+  let lexed_lines = tools.map(\e -> do_lex(e[1], e[0]), tools.enumerate(lines));
+
+  // collect any lines that have errors in them
+  let error_lines = tools.filter(\line -> not line[0], lexed_lines);
+  let has_errors = len(error_lines) > 0;
+
+  // remove the flag from the front of each line
+  let unwrap(lines) = tools.map(\line -> line[1], lines);
+  let lines_to_return = if has_errors
+    then unwrap(error_lines)
+    else unwrap(lexed_lines);
+
+  // return an overall flag, and all the lines joined into one list
+  [not has_errors, tools.join([], lines_to_return)];
 
 
-let do_lex(source) =
-  let chunked_words = tools.partition(is_separator, string.as_list(source));
-  let merged_words  = tools.reduce(merge_longer_ops, [], chunked_words);
-  let string_words  = tools.map(\xs -> tools.join("", xs), merged_words);
+let do_lex(source, line_no) =
+  // list[char]
+  let chars = string.as_list(source);
 
-  let merged_strings   = tools.reduce(merge_strings, [], string_words);
-  let without_comments = tools.discard_between("//", "\n", merged_strings);
+  // list[(int, char)]
+  let with_col = tools.enumerate(chars);
 
-  let lexemes = tools.filter(\s -> not is_space(s), without_comments);
-  let tokens  = tools.map(make_token, lexemes);
+  // list[(loc, char)]
+  let with_loc = tools.map(\e -> [[line_no, e[0]], e[1]], with_col);
 
-  let errors = tools.filter(\token -> token[0] == "error", tokens);
+  // list[bool]
+  let should_split = tools.map(\e -> is_separator(e[1]), with_loc);
+
+  // zip[list[(loc, char)], list[bool]]
+  let grouped = split_when(\e -> e[1], zip(with_loc, should_split));
+
+  // list[list[(loc, char)]]
+  let clean_groups = tools.map(\g -> tools.map(\e -> e[0], g), grouped);
+
+  // list[list[(loc, char)]]
+  let merged_groups = tools.reduce(foo, [], clean_groups);
+
+  // list[(loc, lexeme)]
+  let lexemes = tools.map(make_lexeme, merged_groups);
+
+  // list[(loc, lexeme)]
+  let merged_strings = tools.reduce(bar, [], lexemes);
+
+  // list[(loc, lexeme)]
+  let no_comments = tools.discard_between(\tok -> tok[1] == "//", \tok -> tok[1] == "\n", merged_strings);
+
+  // list[(loc, lexeme)]
+  let no_whitespace = tools.filter(\tok -> not is_space(tok[1]), no_comments);
+
+  // list[(kind, loc, lexeme)]
+  let tokens = tools.map(make_token, no_whitespace);
+
+  // list[(kind, loc, lexeme)]
+  let errors = tools.filter(\tok -> tok[0] == "error", tokens);
+
+  // (bool, list[token])
   if len(errors) > 0
-    then errors
-    else tokens;
+    then [false, errors]
+    else [true,  tokens];
+
+
+let foo(
+  current_list_of_groups, // : list[list[(loc, char)]]
+  group_to_check          // : list[(loc, char)]
+) =
+  if len(current_list_of_groups) == 0 then
+    append(current_list_of_groups, group_to_check)
+
+  else
+     let most_recent_group = current_list_of_groups[-1];
+     let rest_of_groups    = body(current_list_of_groups);
+
+     // if either has more than one character it can't be mergeable.
+     if len(most_recent_group) > 1 or len(group_to_check) > 1 then
+       append(current_list_of_groups, group_to_check)
+
+     else
+       // the combined token starts at the earlier input
+       let most_recent_token = most_recent_group[0];
+       let potential_start = most_recent_token[0];
+       let top_char = most_recent_token[1];
+
+       let new_token = group_to_check[0];
+       let new_char = new_token[1];
+
+       let pair = [top_char, new_char];
+       if
+         pair == ["=", "="]
+         or pair == ["!", "="]
+         or pair == ["<", "="]
+         or pair == [">", "="]
+         or pair == ["-", ">"]
+         or pair == ["/", "/"]
+       then append(rest_of_groups, [most_recent_token, new_token])
+       else append(current_list_of_groups, group_to_check);
+
+
+ let make_lexeme(
+   group // : list[(loc, char)]
+ ) =
+   let start_position = group[0][0];
+   let chars = tools.map(\e -> e[1], group);
+   [start_position, tools.join("", chars)];
+
+
+let bar(
+  current_list_of_tokens, // : list[(loc, lexeme)]
+  token_to_check          // : (loc, lexeme)
+) =
+  if len(current_list_of_tokens) == 0 then
+    append(current_list_of_tokens, token_to_check)
+
+  else
+    let rest_of_tokens     = body(current_list_of_tokens);
+
+    let most_recent_token  = current_list_of_tokens[-1];
+    let most_recent_lexeme = most_recent_token[1];
+    let most_recent_loc    = most_recent_token[0];
+    let lexeme_to_check    = token_to_check[1];
+
+    if is_incomplete_string(most_recent_lexeme)
+      then append(rest_of_tokens, [most_recent_loc, concat(most_recent_lexeme, lexeme_to_check)])
+      else append(current_list_of_tokens, token_to_check);
+
+
+let split_when(f, xs) =
+  let go(items, current, result) =
+    if len(items) > 0 then
+      let first = items[0];
+
+      if f(first) and len(current) > 0 then
+        let new_result = concat(result, [current, [first]]);
+        go(tail(items), [], new_result)
+
+      else if f(first) then
+        let new_result = append(result, [first]);
+        go(tail(items), [], new_result)
+
+      else
+        let new_current = append(current, first);
+        go(tail(items), new_current, result)
+
+    else if len(current) > 0 then
+      append(result, current)
+
+    else
+      result;
+
+  go(xs, [], []);
+
+
+let zip(xs, ys) =
+  let go(ix, iy, result) = if len(ix) > 0 and len(iy) > 0
+    then go(tail(ix), tail(iy), append(result, [ix[0], iy[0]]))
+    else result;
+  go(xs, ys, []);
 
 
 let is_separator(ch) = is_symbol(ch) or is_space(ch);
@@ -57,8 +196,6 @@ let is_keyword(s) =
   or s == "false";
 
 
-
-
 let merge_longer_ops(elements, current) =
   if len(elements) == 0 then
     let result = append(elements, current);
@@ -67,23 +204,23 @@ let merge_longer_ops(elements, current) =
   else
     let rest = body(elements);
     let top  = elements[-1];
-    if top == ["<"] and current == ["="] then
-      append(rest, ["<", "="])
+    if top[1] == ["<"] and current[1] == ["="] then
+      append(rest, [top[0], ["<", "="]])
 
-    else if top == [">"] and current == ["="] then
-      append(rest, [">", "="])
+    else if top[1] == [">"] and current[1] == ["="] then
+      append(rest, [top[0], [">", "="]])
 
-    else if top == ["="] and current == ["="] then
-      append(rest, ["=", "="])
+    else if top[1] == ["="] and current[1] == ["="] then
+      append(rest, [top[0], ["=", "="]])
 
-    else if top == ["!"] and current == ["="] then
-      append(rest, ["!", "="])
+    else if top[1] == ["!"] and current[1] == ["="] then
+      append(rest, [top[0], ["!", "="]])
 
-    else if top == ["-"] and current == [">"] then
-      append(rest, ["-", ">"])
+    else if top[1] == ["-"] and current[1] == [">"] then
+      append(rest, [top[0], ["-", ">"]])
 
-    else if top == ["/"] and current == ["/"] then
-      append(rest, ["/", "/"])
+    else if top[1] == ["/"] and current[1] == ["/"] then
+      append(rest, [top[0], ["/", "/"]])
 
     else
       concat(rest, [top, current]);
@@ -112,13 +249,18 @@ let is_incomplete_string(s) =
   else string.starts_with(s, "\"");
 
 
-let make_token(s) =
-  if is_number(s) then ["number", s]
-  else if string.starts_with(s, "\"") then ["string", s]
-  else if is_symbol(s) then ["symbol", s]
-  else if is_keyword(s) then ["keyword", s]
-  else if is_ident(s) then ["ident", s]
-  else ["error", s];
+let make_token(t) =
+  let lexeme = t[1]; let location = t[0];
+
+  let kind =
+    if is_number(lexeme) then "number"
+    else if string.starts_with(lexeme, "\"") then "string"
+    else if is_symbol(lexeme) then "symbol"
+    else if is_keyword(lexeme) then "keyword"
+    else if is_ident(lexeme) then "ident"
+    else "error";
+
+  [kind, location, lexeme];
 
 
 export(
