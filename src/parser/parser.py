@@ -100,6 +100,7 @@ def parse_primary(tokens, start):
     return choice(tokens, start, [
         (parse_list, ),
         (parse_ident, ),
+        (parse_record, ),
         (parse_number, ),
         (parse_string, ),
         (parse_boolean, ),
@@ -113,6 +114,39 @@ def parse_primary(tokens, start):
 def parse_list(tokens, start):
     parser = (surrounded_by, (expect_lexeme, "["), (optional, (parse_arg_list,), []), (expect_lexeme, "]"))
     return tagged(tokens, start, parser, "list")
+
+
+def parse_record(tokens, start):
+    parser = (
+        surrounded_by,
+              (expect_lexeme, "{"),
+              (separated_by, (expect_lexeme, ","), (parse_record_item, )),
+              (expect_lexeme, "}"))
+    return tagged(tokens, start, parser, "record")
+
+
+def parse_record_item(tokens, start):
+    return choice(tokens, start, [(parse_field, ), (parse_splat, )])
+
+
+def parse_field(tokens, start):
+    parser = (sequence, [(expect_kind, "ident"), (expect_lexeme, "="), (parse_expression,)])
+    pos, result = run_parser(tokens, start, parser)
+    if result is None:
+        return start, None
+
+    [name, _, value] = result
+    return pos, ("field", name, value)
+
+
+def parse_splat(tokens, start):
+    parser = (sequence, [(expect_lexeme, "..."), (parse_expression, )])
+    pos, result = run_parser(tokens, start, parser)
+    if result is None:
+        return start, None
+
+    [_, record] = result
+    return pos, ("splat", record)
 
 
 def parse_ident(tokens, start):

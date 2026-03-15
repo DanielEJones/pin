@@ -1,8 +1,10 @@
 from src import interpret
-from sys import argv
+from sys import argv, setrecursionlimit
 
 
 def main():
+    setrecursionlimit(100_000)
+
     if len(argv) < 2:
         print("Expected a file path to interpret.")
         return
