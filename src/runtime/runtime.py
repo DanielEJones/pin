@@ -49,6 +49,27 @@ def run(ast, path):
             val, = args
             return "list", [go(element, env) for element in val]
 
+        elif command == "record":
+            items, = args
+
+            record = {}
+            for kind, *rest in items:
+                if kind == "field":
+                    name, value = rest
+                    record[name] = go(value, env)
+
+                elif kind == "splat":
+                    other, = rest
+                    ty, *data = go(other, env)
+                    if ty != "record":
+                        print(f"Cannot splat non record type {ty!r}")
+                        return None, None
+
+                    value, = data
+                    record = {**record, **value}
+
+            return "record", record
+
         elif command == "var":
             name, = args
             if name not in env:
@@ -112,7 +133,7 @@ def run(ast, path):
             target, field = args
 
             ty, *data = go(target, env)
-            if ty != "module":
+            if ty not in {"module", "record"}:
                 print(f"Values of type {ty!r} do not have fields.")
                 return None, None
 
