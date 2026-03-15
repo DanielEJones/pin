@@ -1,0 +1,29 @@
+let in(x, xs) = if len(xs) > 0
+  then (x == xs[0]) or in(x, tail(xs))
+  else false;
+
+
+let reduce(xs, init, f) =
+  let go(items, result) = if len(items) > 0
+    then go(tail(items), f(result, items[0]))
+    else result;
+  go(xs, init);
+
+
+let map(xs, f) =
+  let go(items, result) = if len(items) > 0
+    then go(tail(items), append(result, f(items[0])))
+    else result;
+  go(xs, []);
+
+
+let all(xs) = reduce(xs, true, \a, b -> a and b);
+let any(xs) = reduce(xs, false, \a, b -> a or b);
+
+
+{ in = in,
+  map = map,
+  all = all,
+  any = any,
+  reduce = reduce
+}

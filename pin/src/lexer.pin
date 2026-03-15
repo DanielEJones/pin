@@ -1,0 +1,124 @@
+let lib = import("parser_lib/parser_defs.pin");
+let util = import("utils.pin");
+
+
+let char(ch)  = lib.satisfies(\c -> c == ch, concat("expected ", ch));
+let chars(s) = if len(s) > 0 then
+  lib.bind(char(s[0]), \_ ->
+  lib.bind(chars(tail(s)), \_ ->
+    lib.result(s)))
+
+  else lib.result("");
+
+
+let is_letter(ch) = util.in(ch, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
+let letter = lib.satisfies(is_letter, "expected a letter");
+
+
+let is_digit(ch) = util.in(ch, "1234567890");
+let digit = lib.satisfies(is_digit, "expected a digit");
+
+
+let is_symbol(ch) = util.in(ch, "+-*/[](){};.<>=!\\");
+
+
+let alpha = lib.either(letter, char("_"));
+let alnum = lib.either(alpha, digit);
+
+
+let join(xs) = util.reduce(xs, "", concat);
+
+
+let ident =
+  lib.bind(alpha, \x ->
+  lib.bind(lib.many(alnum), \xs ->
+  lib.map(
+    let combined = concat([x], xs); lib.result(combined),
+    join
+  )));
+
+
+let string_item =
+  lib.either(lib.replace(chars("\\\""), "\""),
+  lib.either(lib.replace(chars("\\\\"), "\\"),
+  lib.either(lib.replace(chars("\\t"), "\t"),
+  lib.either(lib.replace(chars("\\n"), "\n"),
+             lib.satisfies(\ch -> ch != "\"", "")))));
+
+let string =
+  lib.with_context("lexing string",
+    lib.bind(char("\""), \_ ->
+    lib.commit(
+      lib.bind(lib.many(string_item), \body ->
+      lib.bind(char("\""), \_ ->
+      lib.map(lib.result(concat(["\""], append(body, "\""))), join))))
+    )
+  );
+
+
+let number = lib.map(lib.at_least_one(digit), join);
+
+
+let symbol =
+  lib.either(char("+"),
+  lib.either(chars("->"),
+  lib.either(char("-"),
+  lib.either(char("*"),
+  lib.either(char("/"),
+  lib.either(char(","),
+  lib.either(char(";"),
+  lib.either(char("."),
+  lib.either(char("\\"),
+  lib.either(char("("),
+  lib.either(char(")"),
+  lib.either(char("["),
+  lib.either(char("]"),
+  lib.either(char("{"),
+  lib.either(char("}"),
+  lib.either(chars("<="),
+  lib.either(chars(">="),
+  lib.either(chars("=="),
+  lib.either(char("="),
+  lib.either(chars("!="),
+  lib.either(char("<"),
+             char(">")
+  )))))))))))))))))))));
+
+
+let comment = lib.bind(chars("//"), \_ -> lib.many(lib.satisfies(\ch -> ch != "\n", "")));
+let space   = lib.satisfies(\ch -> util.in(ch, " \t\n"), "");
+let skip    = lib.many(lib.either(comment, space));
+
+
+let lexeme = lib.with_span(lib.either(lib.either(lib.either(ident, number), string), symbol));
+let token = lib.bind(skip, \_ -> lexeme);
+
+
+let make_token(tk) = {
+  start  = tk.start,
+  end    = tk.end,
+   kind   = (
+     let fits(pred, xs) = util.all(util.map(xs, pred));
+     let keywords = ["let", "if", "then", "else", "and", "or", "not", "true", "false"];
+
+     if fits(is_digit, tk.value)         then "number"
+     else if fits(is_symbol, tk.value)   then "symbol"
+     else if tk.value[0] == "\""         then "string"
+     else if util.in(tk.value, keywords) then "keyword"
+     else                                     "ident"
+   ),
+  lexeme = tk.value
+};
+
+
+let lex(src) =
+  let lexer  = lib.many(token);
+  let result = lib.run_parser(lexer, src);
+  result(
+    \tokens, _ -> util.map(tokens, make_token),
+    \err       -> err
+  );
+
+
+{ lex = lex
+}

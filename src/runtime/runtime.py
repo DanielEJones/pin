@@ -140,6 +140,9 @@ def run(ast, path):
                 return None, None
 
             fields, = data
+            if field not in fields:
+                print(fields.keys())
+
             return fields[field]
 
         elif command == "if":
@@ -158,7 +161,7 @@ def run(ast, path):
             else:
                 return go(els, env)
 
-        elif command in {"and", "or"}:
+        elif command == "and":
             left, right = args
 
             l_typ, *l_data = go(left, env)

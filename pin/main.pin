@@ -10,5 +10,4 @@ let main =
     lang.interpret(file_path);
 
 
-// return the value of the program //
 main

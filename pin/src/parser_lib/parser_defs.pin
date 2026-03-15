@@ -1,0 +1,159 @@
+//---------------------------------------------------------------------------------------------------------------------
+// Result Type
+//
+
+let ok(value, new_state) = \on_ok, _  -> on_ok(value, new_state);
+let err(parser_error)    = \_, on_err -> on_err(parser_error);
+
+
+// --------------------------------------------------------------------------------------------------------------------
+// Parser Helpers
+//
+
+let result(val) = \state -> ok(val, state);
+let fail(error) = \state -> err({ pos = state.pos, msg = error, stack = [], committed = false });
+
+
+// --------------------------------------------------------------------------------------------------------------------
+// Sequencing
+//
+
+/// bind : parser a -> (a -> parser b) -> parser b
+let bind(p, f) = \state ->
+  let result = p(state); result(
+    \val, new_state -> f(val)(new_state),
+    \e              -> err(e)
+  );
+
+
+/// map : parser a -> (a -> b) -> parser b
+let map(p, f) = bind(p, \x -> result(f(x)));
+
+
+// --------------------------------------------------------------------------------------------------------------------
+// Annotators
+//
+
+/// with_context : (str, parser a) -> parser a
+let with_context(msg, p) = \state ->
+  let result = p(state); result(
+    // If we succeeded, there's no need to add context to anything
+    \val, new_state -> ok(val, new_state),
+
+    // If  we failed, add the context to the stack
+    \e -> err({ ...e, stack = append(e.stack, msg) })
+  );
+
+
+/// with_span : parser a -> parser (with_location a)
+let with_span(p) =
+  bind(position, \start ->
+  bind(p, \value ->
+  bind(position, \end ->
+   result({ start = start, end = end, value = value })
+  )));
+
+
+let replace(p, v) = bind(p, \_ -> result(v));
+
+
+let commit(p) = \state ->
+  let result = p(state); result(
+    \val, new_state -> ok(val, new_state),
+    \e -> err({ ...e, committed = true })
+  );
+
+
+// --------------------------------------------------------------------------------------------------------------------
+// Parser Combinators
+//
+
+/// item : state -> result a
+let item = \state -> if state.pos < len(state.src)
+  then ok(state.src[state.pos], { ...state, pos = state.pos + 1})
+  else err({ pos = state.pos, msg = "Unexpected EoF", stack = [], committed = false });
+
+
+/// position : state -> result int
+let position = \state -> ok(state.pos, state);
+
+
+/// either : (parser a, parser a) -> parser a
+let either(a, b) = \state ->
+  let r1 = a(state); r1(
+
+    // forward on a success
+    \val, s -> ok(val, s),
+
+    // if there is an error, try the other one
+    \e1 ->
+      if e1.committed then err(e1)
+      else let r2 = b(state); r2(
+        // forward the success
+        \val, s -> ok(val, s),
+
+        // if both failed, prefer the error that is further
+        \e2 -> if e2.committed
+          then err(e2)
+          else err(if e1.pos >= e2.pos then e1 else e2)
+      )
+  );
+
+
+/// many : parser a -> parser [a]
+let many(p) =
+  // we either bind a head and a tail...
+  let more =
+    bind(p, \x ->
+    bind(many(p), \xs ->
+      let combined = concat([x], xs);
+      result(combined)));
+
+  // ... or we bind nothing, but either is fine.
+  let none = result([]);
+  either(more, none);
+
+
+/// at_least_one : parser a -> parser a
+let at_least_one(p) =
+  bind(p, \x ->
+  bind(many(p), \xs ->
+    let combined = concat([x], xs);
+    result(combined)));
+
+
+/// satisfies : (pred, str) -> parser a
+let satisfies(pred, msg) =
+  bind(item, \x ->
+    if pred(x) then result(x) else fail(msg)
+  );
+
+
+// --------------------------------------------------------------------------------------------------------------------
+// Helpers
+//
+
+/// run_parser : (parser a, str) -> a
+let run_parser(p, src) = p({ pos = 0, src = src});
+
+
+// --------------------------------------------------------------------------------------------------------------------
+// Exports
+//
+
+{ map = map,
+  fail = fail,
+  bind = bind,
+  item = item,
+  many = many,
+  result = result,
+  commit = commit,
+  either = either,
+  replace = replace,
+  position = position,
+  satisfies = satisfies,
+  with_span = with_span,
+  run_parser = run_parser,
+  at_least_one = at_least_one,
+  with_context = with_context
+}
