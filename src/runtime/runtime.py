@@ -29,14 +29,8 @@ def frontend(source):
     return tree
 
 
-CURRENT_FUNCTION = "main"
-LAST_SEARCH = "_"
-
 def run(ast, path):
-
     def go(node, env):
-        global LAST_SEARCH, CURRENT_FUNCTION
-
         command, *args = node
         if command is None:
             return None, None
@@ -57,13 +51,33 @@ def run(ast, path):
             val, = args
             return "list", [go(element, env) for element in val]
 
+        elif command == "record":
+            items, = args
+
+            record = {}
+            for kind, *rest in items:
+                if kind == "field":
+                    name, value = rest
+                    record[name] = go(value, env)
+
+                elif kind == "splat":
+                    other, = rest
+                    ty, *data = go(other, env)
+                    if ty != "record":
+                        print(f"Cannot splat non record type {ty!r}")
+                        return None, None
+
+                    value, = data
+                    record = {**record, **value}
+
+            return "record", record
+
         elif command == "var":
             name, = args
             if name not in env:
-                print(f"{CURRENT_FUNCTION}: No such name {name!r} bound in scope.")
+                print(f"No such name {name!r} bound in scope.")
                 return None, None
 
-            LAST_SEARCH = name
             var = env[name]
             return var
 
@@ -73,7 +87,6 @@ def run(ast, path):
             closed_env = env.copy()
             closure = ("closure", params, body, closed_env)
 
-            LAST_SEARCH = "a lambda"
             return closure
 
         elif command == "bind-fn":
@@ -90,13 +103,10 @@ def run(ast, path):
             target, args_list = args
 
             typ, *data = go(target, env)
-
             if typ not in {"closure", "builtin"}:
                 if typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {typ!r} is not callable: {target}.")
+                    print(f"Values of type {typ!r} is not callable: {target}.")
                 return None, None
-
-            CURRENT_FUNCTION = LAST_SEARCH
 
             if typ == "closure":
                 params, body, closed_env = data
@@ -125,8 +135,8 @@ def run(ast, path):
             target, field = args
 
             ty, *data = go(target, env)
-            if ty != "module":
-                print(f"{CURRENT_FUNCTION}: Values of type {ty!r} do not have fields.")
+            if ty not in {"module", "record"}:
+                print(f"Values of type {ty!r} do not have fields.")
                 return None, None
 
             fields, = data
@@ -138,7 +148,7 @@ def run(ast, path):
             typ, *data = go(cond, env)
             if typ != "bool":
                 if typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {typ!r} do not know truth.")
+                    print(f"Values of type {typ!r} do not know truth.")
                 return None, None
 
             cond_value, = data
@@ -148,13 +158,13 @@ def run(ast, path):
             else:
                 return go(els, env)
 
-        elif command == "and":
+        elif command in {"and", "or"}:
             left, right = args
 
             l_typ, *l_data = go(left, env)
             if l_typ != "bool":
                 if l_typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {l_typ!r} do not know truth.")
+                    print(f"Values of type {l_typ!r} do not know truth.")
                 return None, None
 
             l_value, = l_data
@@ -164,7 +174,7 @@ def run(ast, path):
             r_typ, *r_data = go(right, env)
             if r_typ != "bool":
                 if r_typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {r_typ!r} do not know truth.")
+                    print(f"Values of type {r_typ!r} do not know truth.")
                 return None, None
 
             r_value, = r_data
@@ -177,7 +187,7 @@ def run(ast, path):
             l_typ, *l_data = go(left, env)
             if l_typ != "bool":
                 if l_typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {l_typ!r} do not know truth.")
+                    print(f"Values of type {l_typ!r} do not know truth.")
                 return None, None
 
             l_value, = l_data
@@ -187,7 +197,7 @@ def run(ast, path):
             r_typ, *r_data = go(right, env)
             if r_typ != "bool":
                 if r_typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {r_typ!r} do not know truth.")
+                    print(f"Values of type {r_typ!r} do not know truth.")
                     return None, None
 
             r_value, = r_data
@@ -199,7 +209,7 @@ def run(ast, path):
             typ, *data = go(target, env)
             if typ != "bool":
                 if typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {typ!r} do not know truth.")
+                    print(f"Values of type {typ!r} do not know truth.")
                 return None, None
 
             value, = data
@@ -211,13 +221,13 @@ def run(ast, path):
             l_typ, *l_data = go(left, env)
             if l_typ != "int":
                 if l_typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {l_typ!r} are incomparable.")
+                    print(f"Values of type {l_typ!r} are incomparable.")
                 return None, None
 
             r_typ, *r_data = go(right, env)
             if r_typ != "int":
                 if r_typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {r_typ!r} are incomparable.")
+                    print(f"Values of type {r_typ!r} are incomparable.")
                 return None, None
 
             l_value, = l_data
@@ -252,13 +262,13 @@ def run(ast, path):
             l_typ, *l_data = go(left, env)
             if l_typ != "int":
                 if l_typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {l_typ} do not support arithmetic.")
+                    print(f"Values of type {l_typ} do not support arithmetic.")
                 return None, None
 
             r_typ, *r_data = go(right, env)
             if r_typ != "int":
                 if r_typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {r_typ} do not support arithmetic.")
+                    print(f"Values of type {r_typ} do not support arithmetic.")
                 return None, None
 
             l_value, = l_data
@@ -280,7 +290,7 @@ def run(ast, path):
             typ, *data = go(target, env)
             if typ != "int":
                 if typ is not None:
-                    print(f"{CURRENT_FUNCTION}: Values of type {typ} do not support arithmetic.")
+                    print(f"Values of type {typ} do not support arithmetic.")
                 return None, None
 
             value, = data
@@ -358,9 +368,7 @@ def do_concat(*args):
     r_ty, *r_data = right
 
     if not (l_ty == r_ty) and l_ty in {"str", "list"}:
-        print(f"{CURRENT_FUNCTION}: Could not call 'concat' with types {l_ty!r} and {r_ty!r}.")
-        print(l_data)
-        print(r_data)
+        print(f"Could not call 'concat' with types {l_ty!r} and {r_ty!r}.")
         return None, None
 
     l_value, = l_data
@@ -480,10 +488,6 @@ def do_at(*args):
 
     index, = index_data
     l, = l_data
-
-    if index >= len(l):
-        print(l)
-        print(index)
     return annotate_with_type(l[index])
 
 

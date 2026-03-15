@@ -40,7 +40,8 @@ def is_symbol(s):
         "+", "-", "*", "/", "%",
         "(", ")", ";",
         "\\", ",", "\"",
-        "[", "]", "."
+        "[", "]",
+        "{", "}", "."
     } for ch in s)
 
 
@@ -84,6 +85,11 @@ def merge_longer_ops(elements, current):
 
     elif (top, current) == (["/"], ["/"]):
         tail.append(["/", "/"])
+        return tail
+
+    elif len(tail) > 0 and (tail[-1], top, current) == (["."], ["."], ["."]):
+        *tail, _ = tail
+        tail.append([".", ".", "."])
         return tail
 
     else:

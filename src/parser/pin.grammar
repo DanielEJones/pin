@@ -33,6 +33,7 @@ primary ::=
   | string
   | number
   | ident
+  | record
   | list
 
 lambda-expr ::= "\" param-list "->" expr
@@ -41,5 +42,11 @@ if-expr     ::= "if" expr "then" expr "else" expr
 
 param-list ::= ident ("," ident)*
 call-list  ::= expr ("," expr)*
+
+record      ::= "{" record_item ("," record_item)* "}"
+record_item ::= field | splat
+
+field ::= ident "=" expr
+splat ::= "..." expr
 
 list ::= "[" expr ("," expr)* "]"

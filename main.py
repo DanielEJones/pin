@@ -3,7 +3,7 @@ from sys import argv, setrecursionlimit
 
 
 def main():
-    setrecursionlimit(10000)
+    setrecursionlimit(10_000)
 
     if len(argv) < 2:
         print("Expected a file path to interpret.")
