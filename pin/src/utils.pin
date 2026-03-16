@@ -21,9 +21,13 @@ let all(xs) = reduce(xs, true, \a, b -> a and b);
 let any(xs) = reduce(xs, false, \a, b -> a or b);
 
 
+let reverse(xs) = reduce(xs, [], \xs, x -> concat([x], xs));
+
+
 { in = in,
   map = map,
   all = all,
   any = any,
-  reduce = reduce
+  reduce = reduce,
+  reverse = reverse
 }

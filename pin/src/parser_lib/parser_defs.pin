@@ -55,6 +55,7 @@ let with_span(p) =
 
 
 let replace(p, v) = bind(p, \_ -> result(v));
+let tagged(p, t)  = bind(p, \res -> result([t, res]));
 
 
 let commit(p) = \state ->
@@ -146,6 +147,7 @@ let run_parser(p, src) = p({ pos = 0, src = src});
   bind = bind,
   item = item,
   many = many,
+  tagged = tagged,
   result = result,
   commit = commit,
   either = either,

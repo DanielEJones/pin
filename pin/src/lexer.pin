@@ -19,7 +19,7 @@ let is_digit(ch) = util.in(ch, "1234567890");
 let digit = lib.satisfies(is_digit, "expected a digit");
 
 
-let is_symbol(ch) = util.in(ch, "+-*/[](){};.<>=!\\");
+let is_symbol(ch) = util.in(ch, "+-*/[](){};.<>=!\\%");
 
 
 let alpha = lib.either(letter, char("_"));
@@ -65,8 +65,10 @@ let symbol =
   lib.either(char("-"),
   lib.either(char("*"),
   lib.either(char("/"),
+  lib.either(char("%"),
   lib.either(char(","),
   lib.either(char(";"),
+  lib.either(chars("..."),
   lib.either(char("."),
   lib.either(char("\\"),
   lib.either(char("("),
@@ -82,7 +84,7 @@ let symbol =
   lib.either(chars("!="),
   lib.either(char("<"),
              char(">")
-  )))))))))))))))))))));
+  )))))))))))))))))))))));
 
 
 let comment = lib.bind(chars("//"), \_ -> lib.many(lib.satisfies(\ch -> ch != "\n", "")));
@@ -115,8 +117,8 @@ let lex(src) =
   let lexer  = lib.many(token);
   let result = lib.run_parser(lexer, src);
   result(
-    \tokens, _ -> util.map(tokens, make_token),
-    \err       -> err
+    \tokens, src -> { ok = true, tokens = util.map(tokens, make_token) },
+    \err         -> { ok = false, errors = err }
   );
 
 

@@ -1,9 +1,16 @@
-let lexer = import("lexer.pin");
+let lexer  = import("lexer.pin");
+let parser = import("parser.pin");
 
 
 let interpret(path) =
   let source = read_file(path);
-  lexer.lex(source);
+  let tokens = lexer.lex(source);
+  if not tokens.ok then
+    tokens.errors
+
+  else
+    let tree = parser.parse(tokens.tokens);
+    tree;
 
 
 { interpret = interpret

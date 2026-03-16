@@ -1,0 +1,156 @@
+let lib  = import("parser_lib/parser_defs.pin");
+let util = import("utils.pin");
+
+let lexeme(l) = lib.map(lib.satisfies(\tk -> tk.lexeme == l, concat("expected ", l)), \l -> l.lexeme);
+let kind(k)   = lib.map(lib.satisfies(\tk -> tk.kind == k, concat("expected ", k)), \k -> k.lexeme);
+
+let operator(sym, name) = lib.replace(lexeme(sym), name);
+let primitive(p, name)  = lib.map(kind(p), \v -> {op = name, val = v});
+
+let one_of(parsers) = util.reduce(tail(parsers), head(parsers), \l, r -> lib.either(l, r));
+let surround(l, m, r) = lib.bind(l, \_ -> lib.bind(m, \val -> lib.map(r, \_ -> val)));
+let optional(p, d) = lib.either(p, lib.result(d));
+let separate(sep, v) =
+  let more = lib.bind(sep, \_ -> v);
+  lib.bind(v, \first -> lib.map(lib.many(more), \rest -> concat([first], rest)));
+let list(p) = separate(lexeme(","), p);
+
+let parse_number   = primitive("number", "num");
+let parse_variable = primitive("ident",  "var");
+let parse_string   = primitive("string", "str");
+let parse_bool     = lib.map(lib.either(lexeme("true"), lexeme("false")), \val -> {op = "bool", val = val});
+
+let parse_group(e) = surround(lexeme("("), e, lexeme(")"));
+
+let parse_list(e) = lib.map(
+  surround(lexeme("["), optional(list(e), []), lexeme("]")),
+  \ops -> {op = "list", ops = ops}
+);
+
+let parse_splat(e) = lib.bind(lexeme("..."), \_ -> lib.map(e, \rec -> {op = "splat", record = rec}));
+let parse_field(e) =
+  lib.bind(kind("ident"), \name -> lib.bind(lexeme("="), \_ ->
+  lib.map(e, \value -> {op = "field", name = name, value = value})));
+
+let parse_record_item(e) = lib.either(parse_splat(e), parse_field(e));
+
+let parse_record(e) = lib.map(
+  surround(lexeme("{"), optional(list(parse_record_item(e)), []), lexeme("}")),
+  \ops -> {op = "record", ops = ops}
+);
+
+let parse_let(e) =
+  let param_list = surround(lexeme("("), list(kind("ident")), lexeme(")"));
+  lib.bind(lexeme("let"), \_ -> lib.bind(kind("ident"), \name ->
+  lib.bind(optional(param_list, []), \params ->
+  lib.bind(lexeme("="), \_ -> lib.bind(e, \body ->
+  lib.bind(lexeme(";"), \_ -> lib.map(e, \cont ->
+    if len(params) > 0
+      then {op = "bind", name = name, value = {op = "lambda", params = params, body = body}, cont = cont}
+      else {op = "bind", name = name, value = body, cont = cont}
+  )))))));
+
+let parse_if(e) =
+  lib.bind(lexeme("if"), \_ -> lib.bind(e, \cond ->
+  lib.bind(lexeme("then"), \_ -> lib.bind(e, \then_ ->
+  lib.bind(lexeme("else"), \_ -> lib.map(e, \else_ ->
+    {op = "if", cond = cond, then_ = then_, else_ = else_}
+  ))))));
+
+let parse_lambda(e) =
+  let param_list = list(kind("ident"));
+  lib.bind(lexeme("\\"), \_ -> lib.bind(param_list, \params ->
+  lib.bind(lexeme("->"), \_ -> lib.map(e, \body ->
+    {op = "lambda", params = params, body = body}
+  ))));
+
+let primary_(e) = one_of([
+  parse_number,
+  parse_variable,
+  parse_string,
+  parse_bool,
+  parse_group(e),
+  parse_list(e),
+  parse_record(e),
+  parse_let(e),
+  parse_if(e),
+  parse_lambda(e)
+]);
+
+let parse_neg_op = operator("-", "neg");
+
+let parse_access_(e) = lib.bind(lexeme("."), \_ -> lib.map(kind("ident"), \name -> {op = "access", args = name}));
+let parse_index_(e)  = lib.map(surround(lexeme("["), e, lexeme("]")), \val -> {op = "index", args = val});
+let parse_call_(e)   = lib.map(surround(lexeme("("), list(e), lexeme(")")), \items -> {op = "call", args = items});
+let parse_postfix_op(e) = one_of([parse_access_(e), parse_index_(e), parse_call_(e)]);
+
+let parse_add = operator("+", "add");
+let parse_sub = operator("-", "sub");
+let parse_term_op = one_of([parse_add, parse_sub]);
+
+let parse_mul = operator("*", "mul");
+let parse_div = operator("/", "div");
+let parse_mod = operator("%", "mod");
+let parse_factor_op = one_of([parse_mul, parse_div, parse_mod]);
+
+let parse_lt  = operator("<", "lt");
+let parse_gt  = operator(">", "gt");
+let parse_lte = operator("<=", "lte");
+let parse_gte = operator(">=", "gte");
+let parse_neq = operator("!=", "neq");
+let parse_eq  = operator("==", "eq");
+let parse_comp_op = one_of([parse_lt, parse_gt, parse_lte, parse_gte, parse_neq, parse_eq]);
+
+let parse_not_op = operator("not", "not");
+let parse_and_op = operator("and", "and");
+let parse_or_op  = operator("or", "or");
+
+let binary(lower, ops) =
+  let more =
+    lib.bind(ops, \op ->
+    lib.map(lower, \n ->
+      {op = op, right = n }
+    ));
+
+  lib.bind(lower, \first ->
+  lib.map(lib.many(more), \rest ->
+    util.reduce(rest, first, \l, r -> {op = r.op, left = l, right = r.right})
+  ));
+
+let unary(lower, ops) =
+  lib.bind(lib.many(ops), \apps ->
+  lib.map(lower, \val ->
+    util.reduce(util.reverse(apps), val, \v, o -> {op = o, val = v})
+  ));
+
+let postfix(lower, ops) =
+  lib.bind(lower, \value ->
+  lib.map(lib.many(ops), \apps ->
+    util.reduce(apps, value, \v, o -> {op = o.op, val = v, args = o.args})
+  ));
+
+let build_expr_parser(expr) =
+  let primary  = primary_(expr);
+  let unary_   = unary(primary, parse_neg_op);
+  let postfix_ = postfix(unary_, parse_postfix_op(expr));
+  let factor   = binary(postfix_, parse_factor_op);
+  let term     = binary(factor, parse_term_op);
+  let comp     = binary(term, parse_comp_op);
+  let not_     = unary(comp, parse_not_op);
+  let and_     = binary(not_, parse_and_op);
+  let or_      = binary(and_, parse_or_op);
+  or_;
+
+
+let expr(s) = build_expr_parser(expr)(s);
+
+
+let parse(tokens) =
+  let result = lib.run_parser(expr, tokens);
+  result(
+    \val, _ -> val,
+    \err    -> err
+  );
+
+
+{ parse = parse }
