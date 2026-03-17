@@ -11,6 +11,9 @@ class Frame:
         self.args = []
         self.fn = None
 
+    def __repr__(self):
+        return f"{self.node[0]} {self.node[1]}"
+
 
 class Env:
     def __init__(self, parent, values):
@@ -55,8 +58,6 @@ def better_run(tree, _):
     result = (None, None)
 
     while len(stack) > 0:
-        print(len(stack))
-
         frame = stack[-1]
         command, *args = frame.node
 
@@ -69,12 +70,24 @@ def better_run(tree, _):
             result = ("bool", args[0] == "true")
             stack.pop()
 
+        elif command == "list" and frame.state == 0:
+            elements = args[0]
+            elements_frame = Frame(("args-list", elements), frame.env)
+            stack.append(elements_frame)
+            frame.state = 1
+
+        elif command == "list" and frame.state == 1:
+            stack.pop()
+            elements = result
+            result = ("list", elements)
+
         elif command == "var":
             var_name = args[0]
             result = frame.env.find(var_name)
             stack.pop()
 
         elif command == "call" and frame.state == 0:
+            print(stack)
             target_frame = Frame(args[0], frame.env)
             stack.append(target_frame)
             frame.state = 1
@@ -109,11 +122,10 @@ def better_run(tree, _):
 
         elif command == "call" and frame.state == 3:
             stack.pop()
-
-            _, params, body = frame.fn
+            _, params, body, captured_env = frame.fn
             args = result
 
-            call_env = Env(frame.env, {param: arg for param, arg in zip(params, args)})
+            call_env = Env(captured_env, {param: arg for param, arg in zip(params, args)})
             call_frame = Frame(body, call_env)
             stack.append(call_frame)
 
@@ -138,7 +150,7 @@ def better_run(tree, _):
             params = args[1]
             body = args[2]
 
-            new_env = Env(frame.env, {bound_name: ("closure", params, body)})
+            new_env = Env(frame.env, {bound_name: ("closure", params, body, frame.env)})
             new_frame = Frame(args[3], new_env)
             stack.append(new_frame)
 
@@ -158,6 +170,11 @@ def better_run(tree, _):
             else:
                 else_frame = Frame(args[2], frame.env)
                 stack.append(else_frame)
+
+        elif command == "lambda":
+            params, body = args
+            result = ("closure", params, body, frame.env)
+            stack.pop()
 
         # BINARY OPERATIONS
         elif command in ARITH and frame.state == 0:
@@ -192,6 +209,64 @@ def better_run(tree, _):
             _, left_number = frame.args[0]
             _, right_number = result
             result = ("bool", COMP[command](left_number, right_number))
+            stack.pop()
+
+        elif command == "neg" and frame.state == 0:
+            value_frame = Frame(args[0], frame.env)
+            stack.append(value_frame)
+            frame.state = 1
+
+        elif command == "neg" and frame.state == 1:
+            _, value = result
+            result = ("int", -value)
+            stack.pop()
+
+        elif command == "not" and frame.state == 0:
+            value_frame = Frame(args[0], frame.env)
+            stack.append(value_frame)
+            frame.state = 1
+
+        elif command == "not" and frame.state == 1:
+            _, value = result
+            result = ("bool", not value)
+            stack.pop()
+
+        elif command == "and" and frame.state == 0:
+            left_frame = Frame(args[0], frame.env)
+            stack.append(left_frame)
+            frame.state = 1
+
+        elif command == "and" and frame.state == 1:
+            _, value = result
+            if not value:
+                result = ("bool", False)
+                stack.pop()
+                continue
+
+            right_frame = Frame(args[1], frame.env)
+            stack.append(right_frame)
+            frame.state = 2
+
+        elif command == "and" and frame.state == 2:
+            stack.pop()
+
+        elif command == "or" and frame.state == 0:
+            left_frame = Frame(args[0], frame.env)
+            stack.append(left_frame)
+            frame.state = 1
+
+        elif command == "or" and frame.state == 1:
+            _, value = result
+            if value:
+                result = ("bool", True)
+                stack.pop()
+                continue
+
+            right_frame = Frame(args[1], frame.env)
+            stack.append(right_frame)
+            frame.state = 2
+
+        elif command == "or" and frame.state == 2:
             stack.pop()
 
         else:
