@@ -2,6 +2,205 @@ from src.lexer import lex
 from src.parser import parse
 
 
+class Frame:
+    def __init__(self, node, env):
+        self.node = node
+        self.env = env
+
+        self.state = 0
+        self.args = []
+        self.fn = None
+
+
+class Env:
+    def __init__(self, parent, values):
+        self.values = values
+        self.parent = parent
+
+    def find(self, name):
+        if name in self.values:
+            return self.values[name]
+
+        if self.parent:
+            return self.parent.find(name)
+
+        return None, None
+
+
+ARITH = {
+    "add": lambda l, r: l + r,
+    "sub": lambda l, r: l - r,
+    "mul": lambda l, r: l * r,
+    "div": lambda l, r: l / r,
+    "mod": lambda l, r: l % r,
+}
+COMP = {
+    "lt": lambda l, r: l < r,
+    "gt": lambda l, r: l > r,
+    "lte": lambda l, r: l <= r,
+    "gte": lambda l, r: l >= r,
+    "neq": lambda l, r: l != r,
+    "eq": lambda l, r: l == r,
+}
+
+
+def better_run(tree, _):
+    stack = []
+
+    parent_frame = Frame(tree, Env(None, {}))
+    stack.append(parent_frame)
+
+    # Result of the previous computation stored here
+    # after it's frame has been popped from the stack.
+    result = (None, None)
+
+    while len(stack) > 0:
+        print(len(stack))
+
+        frame = stack[-1]
+        command, *args = frame.node
+
+        # LITERALS
+        if command == "num":
+            result = ("int", int(args[0]))
+            stack.pop()
+
+        elif command == "bool":
+            result = ("bool", args[0] == "true")
+            stack.pop()
+
+        elif command == "var":
+            var_name = args[0]
+            result = frame.env.find(var_name)
+            stack.pop()
+
+        elif command == "call" and frame.state == 0:
+            target_frame = Frame(args[0], frame.env)
+            stack.append(target_frame)
+            frame.state = 1
+
+        elif command == "call" and frame.state == 1:
+            frame.fn = result
+            frame.state = 2
+
+        elif command == "call" and frame.state == 2:
+            args_frame = Frame(("args-list", args[1]), frame.env)
+            stack.append(args_frame)
+            frame.state = 3
+
+        elif command == "args-list" and frame.state == 0:
+            arguments = args[0]
+
+            if len(arguments) < 1:
+                result = frame.args
+                stack.pop()
+
+            else:
+                head, *tail = arguments
+                frame.node = ("args-list", tail)
+
+                arg_frame = Frame(head, frame.env)
+                stack.append(arg_frame)
+                frame.state = 1
+
+        elif command == "args-list" and frame.state == 1:
+            frame.args.append(result)
+            frame.state = 0
+
+        elif command == "call" and frame.state == 3:
+            stack.pop()
+
+            _, params, body = frame.fn
+            args = result
+
+            call_env = Env(frame.env, {param: arg for param, arg in zip(params, args)})
+            call_frame = Frame(body, call_env)
+            stack.append(call_frame)
+
+        # CONSTRUCTS
+        elif command == "bind" and frame.state == 0:
+            value_frame = Frame(args[1], frame.env)
+            stack.append(value_frame)
+            frame.state = 1
+
+        elif command == "bind" and frame.state == 1:
+            stack.pop()
+            bound_name = args[0]
+            bound_value = result
+
+            new_env = Env(frame.env, {bound_name: bound_value})
+            new_frame = Frame(args[2], new_env)
+            stack.append(new_frame)
+
+        elif command == "bind-fn" and frame.state == 0:
+            stack.pop()
+            bound_name = args[0]
+            params = args[1]
+            body = args[2]
+
+            new_env = Env(frame.env, {bound_name: ("closure", params, body)})
+            new_frame = Frame(args[3], new_env)
+            stack.append(new_frame)
+
+        elif command == "if" and frame.state == 0:
+            condition_frame = Frame(args[0], frame.env)
+            stack.append(condition_frame)
+            frame.state = 1
+
+        elif command == "if" and frame.state == 1:
+            stack.pop()
+            _, condition_value = result
+
+            if condition_value:
+                then_frame = Frame(args[1], frame.env)
+                stack.append(then_frame)
+
+            else:
+                else_frame = Frame(args[2], frame.env)
+                stack.append(else_frame)
+
+        # BINARY OPERATIONS
+        elif command in ARITH and frame.state == 0:
+            left_frame = Frame(args[0], frame.env)
+            stack.append(left_frame)
+            frame.state = 1
+
+        elif command in ARITH and frame.state == 1:
+            frame.args.append(result)
+            right_frame = Frame(args[1], frame.env)
+            stack.append(right_frame)
+            frame.state = 2
+
+        elif command in ARITH and frame.state == 2:
+            _, left_number = frame.args[0]
+            _, right_number = result
+            result = ("int", ARITH[command](left_number, right_number))
+            stack.pop()
+
+        elif command in COMP and frame.state == 0:
+            left_frame = Frame(args[0], frame.env)
+            stack.append(left_frame)
+            frame.state = 1
+
+        elif command in COMP and frame.state == 1:
+            frame.args.append(result)
+            right_frame = Frame(args[1], frame.env)
+            stack.append(right_frame)
+            frame.state = 2
+
+        elif command in COMP and frame.state == 2:
+            _, left_number = frame.args[0]
+            _, right_number = result
+            result = ("bool", COMP[command](left_number, right_number))
+            stack.pop()
+
+        else:
+            print(f"Unrecognized command {command!r}")
+            return None, None
+
+    return result
+
+
 def interpret(path):
     with open(path, "r") as f:
         source = f.read()
@@ -11,7 +210,7 @@ def interpret(path):
         print("Failed to parse source")
         return None
 
-    result = run(ast, path)
+    result = better_run(ast, path)
     return result
 
 
