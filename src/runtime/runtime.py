@@ -30,6 +30,11 @@ class Env:
         return None, None
 
 
+PRIM = {
+    "num": lambda value: ("int", int(value)),
+    "bool": lambda value: ("bool", value == "true"),
+    "str": lambda value: normalise_string(value),
+}
 ARITH = {
     "add": lambda l, r: l + r,
     "sub": lambda l, r: l - r,
@@ -47,10 +52,23 @@ COMP = {
 }
 
 
-def better_run(tree, _):
+def better_run(tree, path):
     stack = []
 
-    parent_frame = Frame(tree, Env(None, {}))
+    parent_frame = Frame(tree, Env(None, {
+        "concat": ("builtin", do_concat),
+        "append": ("builtin", do_append),
+        "head": ("builtin", do_head),
+        "tail": ("builtin", do_tail),
+        "len": ("builtin", do_len),
+        "at": ("builtin", do_at),
+
+        "read_file": ("builtin", do_read_file),
+        "write_file": ("builtin", do_write_file),
+
+        "import": ("builtin", lambda *call_args: do_import(*call_args, path)),
+        "export": ("builtin", do_export),
+    }))
     stack.append(parent_frame)
 
     # Result of the previous computation stored here
@@ -62,13 +80,10 @@ def better_run(tree, _):
         command, *args = frame.node
 
         # LITERALS
-        if command == "num":
-            result = ("int", int(args[0]))
+        if command in PRIM:
             stack.pop()
-
-        elif command == "bool":
-            result = ("bool", args[0] == "true")
-            stack.pop()
+            value = args[0]
+            result = PRIM[command](value)
 
         elif command == "list" and frame.state == 0:
             elements = args[0]
@@ -132,12 +147,18 @@ def better_run(tree, _):
 
         elif command == "call" and frame.state == 2:
             stack.pop()
-            _, params, body, captured_env = frame.fn
+            kind, *rest = frame.fn
             args = result
 
-            call_env = Env(captured_env, {param: arg for param, arg in zip(params, args)})
-            call_frame = Frame(body, call_env)
-            stack.append(call_frame)
+            if kind == "closure":
+                params, body, captured_env = rest
+                call_env = Env(captured_env, {param: arg for param, arg in zip(params, args)})
+                call_frame = Frame(body, call_env)
+                stack.append(call_frame)
+
+            elif kind == "builtin":
+                function, = rest
+                result = function(*args)
 
         elif command == "access" and frame.state == 0:
             target = args[0]
