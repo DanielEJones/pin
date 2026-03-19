@@ -384,309 +384,43 @@ def frontend(source):
     return tree
 
 
-def run(ast, path):
-    def go(node, env):
-        command, *args = node
-        if command is None:
-            return None, None
-
-        elif command == "num":
-            val, = args
-            return "int", int(val)
-
-        elif command == "bool":
-            val, = args
-            return "bool", (val == "true")
-
-        elif command == "str":
-            val, = args
-            return normalise_string(val)
-
-        elif command == "list":
-            val, = args
-            return "list", [go(element, env) for element in val]
-
-        elif command == "record":
-            items, = args
-
-            record = {}
-            for kind, *rest in items:
-                if kind == "field":
-                    name, value = rest
-                    record[name] = go(value, env)
-
-                elif kind == "splat":
-                    other, = rest
-                    ty, *data = go(other, env)
-                    if ty != "record":
-                        print(f"Cannot splat non record type {ty!r}")
-                        return None, None
-
-                    value, = data
-                    record = {**record, **value}
-
-            return "record", record
-
-        elif command == "var":
-            name, = args
-            if name not in env:
-                print(f"No such name {name!r} bound in scope.")
-                return None, None
-
-            var = env[name]
-            return var
-
-        elif command == "lambda":
-            params, body = args
-
-            closed_env = env.copy()
-            closure = ("closure", params, body, closed_env)
-
-            return closure
-
-        elif command == "bind-fn":
-            new_env = env.copy()
-            cont = perform_recursive_bind(node, new_env)
-            return go(cont, new_env)
-
-        elif command == "bind":
-            new_env = env.copy()
-            cont = perform_recursive_bind(node, new_env)
-            return go(cont, new_env)
-
-        elif command == "call":
-            target, args_list = args
-
-            typ, *data = go(target, env)
-            if typ not in {"closure", "builtin"}:
-                if typ is not None:
-                    print(f"Values of type {typ!r} is not callable: {target}.")
-                return None, None
-
-            if typ == "closure":
-                params, body, closed_env = data
-
-                call_env = closed_env.copy()
-                for (param, arg) in zip(params, args_list):
-                    call_env[param] = go(arg, env)
-
-                return go(body, call_env)
-
-            else:
-                function, = data
-
-                actual_args = []
-                for arg in args_list:
-                    new_arg = go(arg, env)
-                    actual_args.append(new_arg)
-
-                return function(*actual_args)
-
-        elif command == "index":
-            target, index = args
-            return do_at(go(target, env), go(index, env))
-
-        elif command == "access":
-            target, field = args
-
-            ty, *data = go(target, env)
-            if ty not in {"module", "record"}:
-                print(f"Values of type {ty!r} do not have fields.")
-                return None, None
-
-            fields, = data
-            return fields[field]
-
-        elif command == "if":
-            cond, then, els = args
-
-            typ, *data = go(cond, env)
-            if typ != "bool":
-                if typ is not None:
-                    print(f"Values of type {typ!r} do not know truth.")
-                return None, None
-
-            cond_value, = data
-            if cond_value:
-                return go(then, env)
-
-            else:
-                return go(els, env)
-
-        elif command in {"and", "or"}:
-            left, right = args
-
-            l_typ, *l_data = go(left, env)
-            if l_typ != "bool":
-                if l_typ is not None:
-                    print(f"Values of type {l_typ!r} do not know truth.")
-                return None, None
-
-            r_typ, *r_data = go(right, env)
-            if r_typ != "bool":
-                if r_typ is not None:
-                    print(f"Values of type {r_typ!r} do not know truth.")
-                return None, None
-
-            l_value, = l_data
-            r_value, = r_data
-
-            handler = {
-                "and": lambda a, b: a and b,
-                "or": lambda a, b: a or b,
-            }[command]
-
-            return "bool", handler(l_value, r_value)
-
-        elif command == "not":
-            target, = args
-
-            typ, *data = go(target, env)
-            if typ != "bool":
-                if typ is not None:
-                    print(f"Values of type {typ!r} do not know truth.")
-                return None, None
-
-            value, = data
-            return "bool", not value
-
-        elif command in {"lt", "gt", "lte", "gte"}:
-            left, right = args
-
-            l_typ, *l_data = go(left, env)
-            if l_typ != "int":
-                if l_typ is not None:
-                    print(f"Values of type {l_typ!r} are incomparable.")
-                return None, None
-
-            r_typ, *r_data = go(right, env)
-            if r_typ != "int":
-                if r_typ is not None:
-                    print(f"Values of type {r_typ!r} are incomparable.")
-                return None, None
-
-            l_value, = l_data
-            r_value, = r_data
-
-            handler = {
-                "lt": lambda a, b: a < b,
-                "gt": lambda a, b: a > b,
-                "lte": lambda a, b: a <= b,
-                "gte": lambda a, b: a >= b,
-                "neq": lambda a, b: a != b,
-                "eq": lambda a, b: a == b,
-            }[command]
-
-            return "bool", handler(l_value, r_value)
-
-        elif command in {"eq", "neq"}:
-            left, right = args
-
-            handler = {
-                "eq": lambda a, b: a == b,
-                "neq": lambda a, b: a != b,
-            }[command]
-
-            l_val = go(left, env)
-            r_val = go(right, env)
-            return "bool", handler(l_val, r_val)
-
-        elif command in {"add", "sub", "mul", "div", "mod"}:
-            left, right = args
-
-            l_typ, *l_data = go(left, env)
-            if l_typ != "int":
-                if l_typ is not None:
-                    print(f"Values of type {l_typ} do not support arithmetic.")
-                return None, None
-
-            r_typ, *r_data = go(right, env)
-            if r_typ != "int":
-                if r_typ is not None:
-                    print(f"Values of type {r_typ} do not support arithmetic.")
-                return None, None
-
-            l_value, = l_data
-            r_value, = r_data
-
-            handler = {
-                "add": lambda a, b: a + b,
-                "sub": lambda a, b: a - b,
-                "mul": lambda a, b: a * b,
-                "div": lambda a, b: a / b,
-                "mod": lambda a, b: a % b,
-            }[command]
-
-            return "int", handler(l_value, r_value)
-
-        elif command == "neg":
-            target, = args
-
-            typ, *data = go(target, env)
-            if typ != "int":
-                if typ is not None:
-                    print(f"Values of type {typ} do not support arithmetic.")
-                return None, None
-
-            value, = data
-            return "int", -value
-
-        else:
-            print(f"Unknown command {command}")
-            return None, None
-
-    def perform_recursive_bind(continuation, env):
-        functions_to_be_bound = []
-        values_to_be_bound = []
-
-        (command, *args) = continuation
-
-        while True:
-            if command == "bind-fn":
-                name, _, _, cont = args
-                if name not in env:
-                    env[name] = ("un-initialized",)
-
-                functions_to_be_bound.append(args)
-                (command, *args) = cont
-
-            elif command == "bind":
-                name, body, cont = args
-                if name not in env:
-                    env[name] = ("un-initialized",)
-
-                values_to_be_bound.append(args)
-                (command, *args) = cont
-
-            else:
-                break
-
-        deepest_continuation = (command, *args)
-
-        for (name, params, body, _) in functions_to_be_bound:
-            closure = ("closure", params, body, env)
-            env[name] = closure
-
-        for (name, body, _) in values_to_be_bound:
-            value = go(body, env)
-            env[name] = value
-
-        return deepest_continuation
-
-    return go(ast, {
-        "concat": ("builtin", do_concat),
-        "append": ("builtin", do_append),
-        "head": ("builtin", do_head),
-        "tail": ("builtin", do_tail),
-        "len": ("builtin", do_len),
-        "at": ("builtin", do_at),
-
-        "read_file": ("builtin", do_read_file),
-        "write_file": ("builtin", do_write_file),
-
-        "import": ("builtin", lambda *args: do_import(*args, path)),
-        "export": ("builtin", do_export),
-    })
+# def perform_recursive_bind(continuation, env):
+#     functions_to_be_bound = []
+#     values_to_be_bound = []
+#
+#     (command, *args) = continuation
+#
+#     while True:
+#         if command == "bind-fn":
+#             name, _, _, cont = args
+#             if name not in env:
+#                 env[name] = ("un-initialized", )
+#
+#             functions_to_be_bound.append(args)
+#             (command, *args) = cont
+#
+#         elif command == "bind":
+#             name, body, cont = args
+#             if name not in env:
+#                 env[name] = ("un-initialized",)
+#
+#             values_to_be_bound.append(args)
+#             (command, *args) = cont
+#
+#         else:
+#             break
+#
+#     deepest_continuation = (command, *args)
+#
+#     for (name, params, body, _) in functions_to_be_bound:
+#         closure = ("closure", params, body, env)
+#         env[name] = closure
+#
+#     for (name, body, _) in values_to_be_bound:
+#         value = go(body, env)
+#         env[name] = value
+#
+#     return deepest_continuation
 
 
 def do_concat(*args):
