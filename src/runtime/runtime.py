@@ -81,46 +81,56 @@ def better_run(tree, _):
             elements = result
             result = ("list", elements)
 
+        elif command == "record" and frame.state == 0:
+            elements = args[0]
+            elements_frame = Frame(("args-list", elements), frame.env)
+            stack.append(elements_frame)
+            frame.state = 1
+
+        elif command == "record" and frame.state == 1:
+            stack.pop()
+            key_values = result
+            result = ("record", {key: value for item in key_values for key, value in item.items()})
+
+        elif command == "field" and frame.state == 0:
+            value_frame = Frame(args[1], frame.env)
+            stack.append(value_frame)
+            frame.state = 1
+
+        elif command == "field" and frame.state == 1:
+            stack.pop()
+            name = args[0]
+            value = result
+            result = {name: value}
+
+        elif command == "splat" and frame.state == 0:
+            target = args[0]
+            target_frame = Frame(target, frame.env)
+            stack.append(target_frame)
+            frame.state = 1
+
+        elif command == "splat" and frame.state == 1:
+            stack.pop()
+            _, record = result
+            result = record
+
         elif command == "var":
             var_name = args[0]
             result = frame.env.find(var_name)
             stack.pop()
 
         elif command == "call" and frame.state == 0:
-            print(stack)
             target_frame = Frame(args[0], frame.env)
             stack.append(target_frame)
             frame.state = 1
 
         elif command == "call" and frame.state == 1:
             frame.fn = result
+            args_frame = Frame(("args-list", args[1]), frame.env)
+            stack.append(args_frame)
             frame.state = 2
 
         elif command == "call" and frame.state == 2:
-            args_frame = Frame(("args-list", args[1]), frame.env)
-            stack.append(args_frame)
-            frame.state = 3
-
-        elif command == "args-list" and frame.state == 0:
-            arguments = args[0]
-
-            if len(arguments) < 1:
-                result = frame.args
-                stack.pop()
-
-            else:
-                head, *tail = arguments
-                frame.node = ("args-list", tail)
-
-                arg_frame = Frame(head, frame.env)
-                stack.append(arg_frame)
-                frame.state = 1
-
-        elif command == "args-list" and frame.state == 1:
-            frame.args.append(result)
-            frame.state = 0
-
-        elif command == "call" and frame.state == 3:
             stack.pop()
             _, params, body, captured_env = frame.fn
             args = result
@@ -128,6 +138,39 @@ def better_run(tree, _):
             call_env = Env(captured_env, {param: arg for param, arg in zip(params, args)})
             call_frame = Frame(body, call_env)
             stack.append(call_frame)
+
+        elif command == "access" and frame.state == 0:
+            target = args[0]
+            target_frame = Frame(target, frame.env)
+            stack.append(target_frame)
+            frame.state = 1
+
+        elif command == "access" and frame.state == 1:
+            stack.pop()
+            field = args[1]
+            _, record = result
+            result = record[field]
+
+        elif command == "index" and frame.state == 0:
+            target = args[0]
+            target_frame = Frame(target, frame.env)
+            stack.append(target_frame)
+            frame.state = 1
+
+        elif command == "index" and frame.state == 1:
+            list_value = result
+            frame.args.append(list_value)
+
+            index = args[1]
+            index_frame = Frame(index, frame.env)
+            stack.append(index_frame)
+            frame.state = 2
+
+        elif command == "index" and frame.state == 2:
+            stack.pop()
+            _, list_value = frame.args[0]
+            _, index_value = result
+            result = list_value[index_value]
 
         # CONSTRUCTS
         elif command == "bind" and frame.state == 0:
@@ -175,6 +218,25 @@ def better_run(tree, _):
             params, body = args
             result = ("closure", params, body, frame.env)
             stack.pop()
+
+        elif command == "args-list" and frame.state == 0:
+            arguments = args[0]
+
+            if len(arguments) < 1:
+                result = frame.args
+                stack.pop()
+
+            else:
+                head, *tail = arguments
+                frame.node = ("args-list", tail)
+
+                arg_frame = Frame(head, frame.env)
+                stack.append(arg_frame)
+                frame.state = 1
+
+        elif command == "args-list" and frame.state == 1:
+            frame.args.append(result)
+            frame.state = 0
 
         # BINARY OPERATIONS
         elif command in ARITH and frame.state == 0:
